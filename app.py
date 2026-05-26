@@ -1,135 +1,89 @@
 import streamlit as st
 import pandas as pd
+from docx import Document
 from io import BytesIO
 
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-from PyPDF2 import PdfReader, PdfWriter
+st.title("📦 Delivery Note Generator - DOCX MODE")
 
-
-st.set_page_config(layout="wide")
-st.title("📦 Delivery Note Generator - FINAL")
+excel_file = st.file_uploader("Upload Excel", type=["xlsx"])
+generate = st.button("Generate")
 
 
 # ==========================
-# UPLOAD
+# CREA DOCUMENTO
 # ==========================
-excel_file = st.file_uploader("Upload Excel IT", type=["xlsx"])
-template_file = st.file_uploader("Upload PDF Template", type=["pdf"])
+def create_doc(dn, data):
 
-generate = st.button("🚀 Generate")
+    doc = Document()
 
-
-# ==========================
-# CREATE OVERLAY
-# ==========================
-def create_overlay(dn, data):
-
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-
-    W, H = A4
     row = data.iloc[0]
 
-    # FONT MONOSPACE (IMPORTANTISSIMO)
-    c.setFont("Courier", 9)
+    # ==========================
+    # HEADER
+    # ==========================
+    doc.add_paragraph(f"AFLEVERBON {dn}")
+    doc.add_paragraph(f"Client: {row['CLIENT']}")
 
-    # HEADER DATI
-    c.drawString(300, 760, str(dn))
-    c.drawString(60, 660, str(row["CLIENT"]))
+    # ==========================
+    # CLIENT
+    # ==========================
+    doc.add_paragraph("")
 
-    c.drawString(60, 610, str(row["NAME"]))
-    c.drawString(60, 595, str(row["STRASSE"]))
-    c.drawString(60, 580, f"{row['PC']} {row['CITY']}")
+    doc.add_paragraph(row["NAME"])
+    doc.add_paragraph(row["STRASSE"])
+    doc.add_paragraph(f"{row['PC']} {row['CITY']}")
+
+    doc.add_paragraph("")
 
     # ==========================
     # TABLE
     # ==========================
-    y = 430
-    c.setFont("Courier", 8)
+    table = doc.add_table(rows=1, cols=5)
+
+    headers = ["ARTIKEL", "AANTAL", "CONSUMENTEENHEID", "OMSCHRIJVING", "PRIJS"]
+
+    for i, h in enumerate(headers):
+        table.rows[0].cells[i].text = h
 
     for _, r in data.iterrows():
 
-        qty = int(r["quantity_(bundles)"]) if pd.notna(r["quantity_(bundles)"]) else ""
-        price = r["price per bundle"] if pd.notna(r["price per bundle"]) else ""
+        row_cells = table.add_row().cells
 
-        line = f"{r['SKU']}    {qty:<6}    {price}"
+        row_cells[0].text = str(r["SKU"])
+        row_cells[1].text = str(r["quantity_(bundles)"])
+        row_cells[2].text = ""
+        row_cells[3].text = ""  # descrizione opzionale
+        row_cells[4].text = str(r["price per bundle"])
 
-        c.drawString(60, y, line)
-
-        y -= 12
-
-        if y < 60:
-            c.showPage()
-            c.setFont("Courier", 9)
-            c.drawString(300, 760, str(dn))
-
-            c.setFont("Courier", 8)
-            y = 430
-
-    c.save()
+    buffer = BytesIO()
+    doc.save(buffer)
     buffer.seek(0)
 
     return buffer
 
 
 # ==========================
-# MERGE PDF
-# ==========================
-def merge_pdf(template_bytes, overlay_bytes):
-
-    template_reader = PdfReader(template_bytes)
-    overlay_reader = PdfReader(overlay_bytes)
-
-    writer = PdfWriter()
-
-    for i in range(len(template_reader.pages)):
-
-        page = template_reader.pages[i]
-
-        if i < len(overlay_reader.pages):
-            page.merge_page(overlay_reader.pages[i])
-
-        writer.add_page(page)
-
-    output = BytesIO()
-    writer.write(output)
-    output.seek(0)
-
-    return output
-
-
-# ==========================
 # MAIN
 # ==========================
-if generate and excel_file is not None and template_file is not None:
+if generate and excel_file:
 
     df = pd.read_excel(excel_file)
     df.columns = df.columns.str.strip()
 
-    # FIX bundles
-    if "quantity_(bundles)" not in df.columns:
-        for col in df.columns:
-            if "bundles" in col.lower():
-                df = df.rename(columns={col: "quantity_(bundles)"})
-
-    if "DN" not in df.columns:
-        st.error(f"❌ DN non trovato: {list(df.columns)}")
-        st.stop()
+    for col in df.columns:
+        if "bundles" in col.lower():
+            df = df.rename(columns={col: "quantity_(bundles)"})
 
     grouped = df.groupby("DN")
 
     for dn, group in grouped:
 
-        st.write(f"Processing DN {dn}")
-
-        overlay_pdf = create_overlay(dn, group)
-        final_pdf = merge_pdf(template_file, overlay_pdf)
+        doc_file = create_doc(dn, group)
 
         st.download_button(
-            label=f"📄 Download {dn}",
-            data=final_pdf,
-            file_name=f"{dn}.pdf"
+            f"Download {dn}",
+            doc_file,
+            file_name=f"{dn}.docx"
         )
 
     st.success("✅ DONE")
