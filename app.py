@@ -1,14 +1,9 @@
-import streamlit as st
-import pandas as pd
-from io import BytesIO
-
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
+import streamlit as stimport streamlit asfrom reportlab.lib.pagesizes import A4
 from PyPDF2 import PdfReader, PdfWriter
 
 
 st.set_page_config(layout="wide")
-st.title("📦 Delivery Note Generator - TEMPLATE MODE")
+st.title("📦 Delivery Note Generator - FINAL")
 
 excel_file = st.file_uploader("Upload Excel IT", type=["xlsx"])
 template_file = st.file_uploader("Upload PDF Template", type=["pdf"])
@@ -16,9 +11,9 @@ template_file = st.file_uploader("Upload PDF Template", type=["pdf"])
 generate = st.button("🚀 Generate")
 
 
-# ==========================
-# CREATE OVERLAY
-# ==========================
+# ======================================
+# CREATE OVERLAY (PIXEL + SAP STYLE)
+# ======================================
 def create_overlay(dn, data):
 
     buffer = BytesIO()
@@ -27,33 +22,49 @@ def create_overlay(dn, data):
     W, H = A4
     row = data.iloc[0]
 
-    c.setFont("Helvetica", 9)
+    # FONT (monospace = allineamento perfetto)
+    c.setFont("Courier", 9)
 
-    # DN
-    c.drawString(300, 760, str(dn))
+    # ==========================
+    # HEADER DATA
+    # ==========================
+    c.drawString(300, 760, str(dn))                # DN centro
+    c.drawString(60, 660, str(row["CLIENT"]))      # customer code
 
-    # CLIENT CODE
-    c.drawString(60, 660, str(row["CLIENT"]))
-
-    # CUSTOMER ADDRESS
+    # indirizzo cliente
     c.drawString(60, 610, str(row["NAME"]))
     c.drawString(60, 595, str(row["STRASSE"]))
     c.drawString(60, 580, f"{row['PC']} {row['CITY']}")
 
-    # TABLE
+    # ==========================
+    # TABLE (SAP STYLE)
+    # ==========================
     y = 430
-    c.setFont("Helvetica", 8)
+    c.setFont("Courier", 8)
 
     for _, r in data.iterrows():
-        c.drawString(60, y, str(r["SKU"]))
-        c.drawString(340, y, str(r["quantity_(bundles)"]))
-        c.drawString(420, y, str(r["price per bundle"]))
+
+        # costruzione riga stile PDF
+        qty = int(r["quantity_(bundles)"]) if pd.notna(r["quantity_(bundles)"]) else ""
+        price = r["price per bundle"] if pd.notna(r["price per bundle"]) else ""
+
+        line = f"{r['SKU']}    {qty:<6}    {price}"
+
+        c.drawString(60, y, line)
 
         y -= 12
 
-        if y < 50:
+        # ==========================
+        # NUOVA PAGINA
+        # ==========================
+        if y < 60:
             c.showPage()
-            y = 780
+
+            c.setFont("Courier", 9)
+            c.drawString(300, 760, str(dn))
+
+            c.setFont("Courier", 8)
+            y = 430
 
     c.save()
     buffer.seek(0)
@@ -61,9 +72,9 @@ def create_overlay(dn, data):
     return buffer
 
 
-# ==========================
+# ======================================
 # MERGE TEMPLATE + OVERLAY
-# ==========================
+# ======================================
 def merge_pdf(template_bytes, overlay_bytes):
 
     template_reader = PdfReader(template_bytes)
@@ -72,6 +83,7 @@ def merge_pdf(template_bytes, overlay_bytes):
     writer = PdfWriter()
 
     for i in range(len(template_reader.pages)):
+
         page = template_reader.pages[i]
 
         if i < len(overlay_reader.pages):
@@ -86,20 +98,21 @@ def merge_pdf(template_bytes, overlay_bytes):
     return output
 
 
-# ==========================
+# ======================================
 # MAIN
-# ==========================
+# ======================================
 if generate and excel_file is not None and template_file is not None:
 
     df = pd.read_excel(excel_file)
     df.columns = df.columns.str.strip()
 
-    # FIX bundles
+    # FIX bundles column
     if "quantity_(bundles)" not in df.columns:
         for col in df.columns:
             if "bundles" in col.lower():
                 df = df.rename(columns={col: "quantity_(bundles)"})
 
+    # controllo DN
     if "DN" not in df.columns:
         st.error(f"❌ DN non trovato: {list(df.columns)}")
         st.stop()
@@ -110,8 +123,8 @@ if generate and excel_file is not None and template_file is not None:
 
         st.write(f"Processing DN {dn}")
 
-        overlay = create_overlay(dn, group)
-        final_pdf = merge_pdf(template_file, overlay)
+        overlay_pdf = create_overlay(dn, group)
+        final_pdf = merge_pdf(template_file, overlay_pdf)
 
         st.download_button(
             label=f"📄 Download {dn}",
@@ -120,3 +133,8 @@ if generate and excel_file is not None and template_file is not None:
         )
 
     st.success("✅ DONE")
+``
+import pandas as pd
+from io import BytesIO
+
+from reportlab.pdfgen import canvas
