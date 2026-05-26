@@ -1,14 +1,16 @@
 import streamlit as st
 import pandas as pd
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
 from io import BytesIO
+
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
 
 st.set_page_config(layout="wide")
 st.title("📦 Delivery Note Generator")
 
 # ==========================
-# UPLOAD FILES
+# UPLOAD
 # ==========================
 orders_file = st.file_uploader("Orders Excel", type=["xlsx"])
 tp500_file = st.file_uploader("TP500", type=["xlsx"])
@@ -18,7 +20,7 @@ sku_file = st.file_uploader("SKU Master", type=["xlsx"])
 generate = st.button("🚀 Generate")
 
 # ==========================
-# TROVA COLONNE AUTOMATICO
+# FIND COLUMN
 # ==========================
 def find_column(df, keywords):
     for col in df.columns:
@@ -28,50 +30,122 @@ def find_column(df, keywords):
     return None
 
 # ==========================
-# CREA PDF IN MEMORIA
+# PDF TEMPLATE PRO
 # ==========================
 def create_pdf(dn, data):
 
-    data = data.fillna("")
-
     buffer = BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
+    doc = SimpleDocTemplate(buffer)
 
-    # HEADER
-    c.drawString(40, 800, "PHILIP MORRIS")
-    c.drawString(40, 780, f"DELIVERY NOTE - {dn}")
+    styles = getSampleStyleSheet()
+    elements = []
 
+    data = data.fillna("")
     row = data.iloc[0]
 
-    customer = str(row.get("Descr.", ""))
-    city = str(row.get("Adress 2", ""))
-    cap = str(row.get("Cp", ""))
-    cust_id = str(row.get("CustomerID", ""))
+    # ==========================
+    # HEADER
+    # ==========================
+    elements.append(Paragraph("<b>PHILIP MORRIS INTERNATIONAL</b>", styles["Title"]))
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph(f"<b>AFLEVERBON - {dn}</b>", styles["Title"]))
+    elements.append(Spacer(1, 20))
 
-    c.drawString(40, 750, f"Customer: {cust_id}")
-    c.drawString(40, 735, customer)
-    c.drawString(40, 720, f"{cap} {city}")
+    # ==========================
+    # TOP INFO TABLE
+    # ==========================
+    info_data = [
+        ["AFZENDLOCATIE", "VERVOERDER", "ROUTE"],
+        ["Bergen Op Zoom", "Speedlink B.V", dn],
+    ]
 
-    # TABLE
-    y = 680
-    c.drawString(40, y, "SKU")
-    c.drawString(150, y, "Description")
-    c.drawString(350, y, "Qty")
+    info_table = Table(info_data, colWidths=[180, 180, 180])
+    info_table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 1, colors.black),
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey),
+        ("ALIGN", (0,0), (-1,-1), "LEFT")
+    ]))
 
-    y -= 20
+    elements.append(info_table)
+    elements.append(Spacer(1, 15))
 
-    for _, r in data.head(50).iterrows():
-        c.drawString(40, y, str(r.get("SKU", "")))
-        c.drawString(150, y, str(r.get("DESCRIPTION", ""))[:30])
-        c.drawString(350, y, str(r.get("QTY", "")))
+    # ==========================
+    # SECOND INFO LINE
+    # ==========================
+    info2 = [
+        ["KLANTCODE", "SOORT BESTELLING", "LEVERDATUM"],
+        [row["CustomerID"], "Delivery", ""]
+    ]
 
-        y -= 15
+    table2 = Table(info2, colWidths=[180, 180, 180])
+    table2.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 1, colors.black),
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey)
+    ]))
 
-        if y < 50:
-            c.showPage()
-            y = 800
+    elements.append(table2)
+    elements.append(Spacer(1, 20))
 
-    c.save()
+    # ==========================
+    # CUSTOMER BLOCK
+    # ==========================
+    customer_left = f"""
+    <b>{row.get("Descr.", "")}</b><br/>
+    {row.get("Adress 2", "")}<br/>
+    {row.get("Cp", "")}
+    """
+
+    customer_data = [
+        ["ONTVANGER VAN GOEDEREN", "ONTVANGER VAN DE AFLEVERINGSBON"],
+        [customer_left, customer_left]
+    ]
+
+    cust_table = Table(customer_data, colWidths=[270, 270])
+    cust_table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 1, colors.black),
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey)
+    ]))
+
+    elements.append(cust_table)
+    elements.append(Spacer(1, 20))
+
+    # ==========================
+    # TOTAL SECTION
+    # ==========================
+    totals = [
+        ["TOTAAL DOZEN", "0", "BRUTOGEWICHT", "0 KG"]
+    ]
+
+    totals_table = Table(totals, colWidths=[135, 135, 135, 135])
+    totals_table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 1, colors.black)
+    ]))
+
+    elements.append(totals_table)
+    elements.append(Spacer(1, 20))
+
+    # ==========================
+    # ITEMS TABLE
+    # ==========================
+    table_data = [["ARTIKEL", "AANTAL", "OMSCHRIJVING"]]
+
+    for _, r in data.iterrows():
+        table_data.append([
+            r.get("SKU", ""),
+            r.get("QTY", ""),
+            r.get("DESCRIPTION", "")
+        ])
+
+    items_table = Table(table_data, colWidths=[120, 80, 340])
+
+    items_table.setStyle(TableStyle([
+        ("GRID", (0,0), (-1,-1), 1, colors.black),
+        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey)
+    ]))
+
+    elements.append(items_table)
+
+    doc.build(elements)
     buffer.seek(0)
     return buffer
 
@@ -83,33 +157,23 @@ if generate and orders_file and tp500_file and mapping_file and sku_file:
 
     st.info("Processing...")
 
-    # LOAD FILES
     df_orders = pd.read_excel(orders_file)
     df_map = pd.read_excel(mapping_file)
     df_tp500 = pd.read_excel(tp500_file)
     df_sku = pd.read_excel(sku_file)
 
-    # CLEAN COLUMNS
     for df in [df_orders, df_map, df_tp500, df_sku]:
         df.columns = df.columns.str.strip()
 
-    # ==========================
     # ORDERS
-    # ==========================
     if "quantity_(bundles)" in df_orders.columns:
         df_orders = df_orders.rename(columns={"quantity_(bundles)": "QTY"})
 
     df_orders["DN"] = df_orders["DN"].astype(str)
 
-    # ==========================
     # MAPPING
-    # ==========================
     dn_col = find_column(df_map, ["dn"])
     cust_col = find_column(df_map, ["customer"])
-
-    if dn_col is None or cust_col is None:
-        st.error(f"❌ Mapping sbagliato. Colonne: {list(df_map.columns)}")
-        st.stop()
 
     df_map = df_map.rename(columns={
         dn_col: "DN",
@@ -118,91 +182,34 @@ if generate and orders_file and tp500_file and mapping_file and sku_file:
 
     df_map["DN"] = df_map["DN"].astype(str)
 
-    # ==========================
-    # MERGE 1
-    # ==========================
     df = df_orders.merge(df_map, on="DN", how="left")
 
-    if "CustomerID" not in df.columns:
-        st.error(f"❌ CustomerID non trovato dopo merge. Colonne: {list(df.columns)}")
-        st.stop()
-
-    # ==========================
     # TP500
-    # ==========================
     cust_tp = find_column(df_tp500, ["customer"])
-
-    if cust_tp is None:
-        st.error(f"❌ TP500 sbagliato. Colonne: {list(df_tp500.columns)}")
-        st.stop()
-
     df_tp500 = df_tp500.rename(columns={cust_tp: "CustomerID"})
 
-    # 💣 FIX CRITICO (FORMAT)
-    df["CustomerID"] = df["CustomerID"].astype(str).str.strip().str.zfill(10)
-    df_tp500["CustomerID"] = df_tp500["CustomerID"].astype(str).str.strip().str.zfill(10)
+    df["CustomerID"] = df["CustomerID"].astype(str).str.zfill(10)
+    df_tp500["CustomerID"] = df_tp500["CustomerID"].astype(str).str.zfill(10)
 
-    # ==========================
-    # MERGE 2
-    # ==========================
     df = df.merge(df_tp500, on="CustomerID", how="left")
 
-    # ==========================
-    # MERGE 3 SKU
-    # ==========================
+    # SKU
     if "SKU" in df_sku.columns:
         df = df.merge(df_sku, on="SKU", how="left")
 
-    # ==========================
-    # FIX DN (ANTI KEYERROR)
-    # ==========================
-    df.columns = df.columns.str.strip()
-
-    if "DN" not in df.columns:
-        for col in df.columns:
-            if "dn" in col.lower():
-                df = df.rename(columns={col: "DN"})
-                break
-
-    if "DN" not in df.columns:
-        st.error(f"❌ DN non trovato. Colonne: {list(df.columns)}")
-        st.stop()
-
-    # ==========================
-    # FINAL CLEAN
-    # ==========================
     df = df.fillna("")
 
-    try:
-        grouped = df.groupby("DN")
-    except:
-        st.error(f"❌ Errore groupby. Colonne: {list(df.columns)}")
-        st.stop()
+    # GROUP
+    grouped = df.groupby("DN")
 
-    total = len(grouped)
-    progress = st.progress(0)
+    for dn, group in grouped:
 
-    st.write(f"Total DN: {total}")
+        pdf = create_pdf(dn, group)
 
-    # ==========================
-    # GENERATE PDF
-    # ==========================
-    for i, (dn, group) in enumerate(grouped):
-
-        st.write(f"Processing {dn}")
-
-        try:
-            pdf_file = create_pdf(dn, group)
-
-            st.download_button(
-                label=f"📄 Download {dn}",
-                data=pdf_file,
-                file_name=f"{dn}.pdf"
-            )
-
-        except Exception as e:
-            st.error(f"Errore su {dn}: {e}")
-
-        progress.progress((i + 1) / total)
+        st.download_button(
+            f"📄 Download {dn}",
+            data=pdf,
+            file_name=f"{dn}.pdf"
+        )
 
     st.success("✅ DONE!")
