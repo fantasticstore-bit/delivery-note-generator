@@ -1,15 +1,9 @@
-import streamlit as st
-import pandas as pd
-from io import BytesIO
-
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
-
+import streamlit as stimport streamlit as.lib.pagesizes import A4
 from PyPDF2 import PdfReader, PdfWriter
 
 
-
-st.title("📦 Delivery Note Generator (TEMPLATE MODE)")
+st.set_page_config(layout="wide")
+st.title("📦 Delivery Note Generator - TEMPLATE MODE")
 
 excel_file = st.file_uploader("Upload Excel IT", type=["xlsx"])
 template_file = st.file_uploader("Upload PDF Template", type=["pdf"])
@@ -18,7 +12,7 @@ generate = st.button("🚀 Generate")
 
 
 # ==========================
-# CREA OVERLAY DATI
+# CREATE OVERLAY
 # ==========================
 def create_overlay(dn, data):
 
@@ -28,27 +22,25 @@ def create_overlay(dn, data):
     W, H = A4
     row = data.iloc[0]
 
-    # ==========================
-    # 🔥 QUI SONO LE COORDINATE REALI (ALLINEATE AL PDF)
-    # ==========================
-
     c.setFont("Helvetica", 9)
 
-    # DN
+    # DN (centro alto)
     c.drawString(300, 760, str(dn))
-
-    # CLIENTE
-    c.drawString(60, 610, row["NAME"])
-    c.drawString(60, 595, row["STRASSE"])
-    c.drawString(60, 580, f"{row['PC']} {row['CITY']}")
 
     # CLIENT CODE
     c.drawString(60, 660, str(row["CLIENT"]))
 
+    # CUSTOMER ADDRESS
+    c.drawString(60, 610, str(row["NAME"]))
+    c.drawString(60, 595, str(row["STRASSE"]))
+    c.drawString(60, 580, f"{row['PC']} {row['CITY']}")
+
     # ==========================
-    # TABELLA
+    # TABLE
     # ==========================
     y = 430
+
+    c.setFont("Helvetica", 8)
 
     for _, r in data.iterrows():
 
@@ -58,6 +50,7 @@ def create_overlay(dn, data):
 
         y -= 12
 
+        # nuova pagina overlay
         if y < 50:
             c.showPage()
             y = 780
@@ -71,10 +64,10 @@ def create_overlay(dn, data):
 # ==========================
 # MERGE TEMPLATE + OVERLAY
 # ==========================
-def merge_pdf(template, overlay):
+def merge_pdf(template_file_bytes, overlay_bytes):
 
-    template_reader = PdfReader(template)
-    overlay_reader = PdfReader(overlay)
+    template_reader = PdfReader(template_file_bytes)
+    overlay_reader = PdfReader(overlay_bytes)
 
     writer = PdfWriter()
 
@@ -102,29 +95,38 @@ if generate and excel_file and template_file:
     df = pd.read_excel(excel_file)
     df.columns = df.columns.str.strip()
 
+    # FIX bundles column
     if "quantity_(bundles)" not in df.columns:
         for col in df.columns:
             if "bundles" in col.lower():
                 df = df.rename(columns={col: "quantity_(bundles)"})
 
+    # sicurezza
+    if "DN" not in df.columns:
+        st.error(f"❌ DN non trovato: {list(df.columns)}")
+        st.stop()
+
     grouped = df.groupby("DN")
 
     for dn, group in grouped:
 
-        st.write(f"Processing {dn}")
+        st.write(f"Processing DN {dn}")
 
-        overlay = create_overlay(dn, group)
+        # overlay
+        overlay_pdf = create_overlay(dn, group)
 
-        final_pdf = merge_pdf(template_file, overlay)
+        # merge con template
+        final_pdf = merge_pdf(template_file, overlay_pdf)
 
         st.download_button(
-            f"📄 Download {dn}",
-            final_pdf,
+            label=f"📄 Download {dn}",
+            data=final_pdf,
             file_name=f"{dn}.pdf"
         )
 
     st.success("✅ DONE")
+
+import pandas as pd
 from io import BytesIO
 
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
