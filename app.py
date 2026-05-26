@@ -2,217 +2,167 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+
 
 st.set_page_config(layout="wide")
-st.title("📦 Delivery Note Generator")
+st.title("📦 Delivery Note Generator - PMI Style")
 
-# ==========================
-# UPLOAD
-# ==========================
-orders_file = st.file_uploader("Orders Excel", type=["xlsx"])
-tp500_file = st.file_uploader("TP500", type=["xlsx"])
-mapping_file = st.file_uploader("Mapping DN → Customer", type=["xlsx"])
-sku_file = st.file_uploader("SKU Master", type=["xlsx"])
-
+file = st.file_uploader("Upload IT Excel", type=["xlsx"])
 generate = st.button("🚀 Generate")
 
-# ==========================
-# FIND COLUMN SAFE
-# ==========================
-def find_column(df, keys):
-    for col in df.columns:
-        for k in keys:
-            if k.lower() in col.lower():
-                return col
-    return None
 
 # ==========================
-# PDF CREATION (PRO)
+# PDF CREATOR (PIXEL PERFECT BASE)
 # ==========================
 def create_pdf(dn, data):
 
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer)
-    styles = getSampleStyleSheet()
+    c = canvas.Canvas(buffer, pagesize=A4)
 
-    elements = []
-    data = data.fillna("")
+    W, H = A4
     row = data.iloc[0]
 
-    # HEADER
-    elements.append(Paragraph("<b>PHILIP MORRIS INTERNATIONAL</b>", styles["Title"]))
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph(f"<b>AFLEVERBON - {dn}</b>", styles["Title"]))
-    elements.append(Spacer(1, 20))
+    # ==========================
+    # HEADER LEFT
+    # ==========================
+    c.setFont("Helvetica", 8)
+    c.drawString(40, H-40, "Philip Morris Wattweg 29,")
+    c.drawString(40, H-52, "4622 RA, Bergen Op Zoom,")
+    c.drawString(40, H-64, "Netherlands")
 
+    # ==========================
+    # TITLE
+    # ==========================
+    c.setFont("Helvetica-Bold", 18)
+    c.drawCentredString(W/2, H-60, "AFLEVERBON")
+
+    c.setFont("Helvetica-Bold", 10)
+    c.drawCentredString(W/2, H-75, str(dn))
+
+    # ==========================
+    # RIGHT BOX
+    # ==========================
+    c.rect(W-150, H-90, 110, 60)
+
+    c.setFont("Helvetica", 8)
+    c.drawString(W-140, H-45, f"Lev: {dn}")
+    c.drawString(W-140, H-60, "Blad: 1/1")
+    c.drawString(W-140, H-75, "Ref:")
+
+    # ==========================
     # BOX 1
-    table1 = Table([
-        ["AFZENDLOCATIE", "VERVOERDER", "ROUTE"],
-        ["Bergen Op Zoom", "Speedlink B.V", dn]
-    ], colWidths=[180, 180, 180])
+    # ==========================
+    y = H - 120
+    c.rect(40, y, W-80, 40)
 
-    table1.setStyle([
-        ("GRID", (0,0), (-1,-1), 1, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey)
-    ])
+    c.setFont("Helvetica", 9)
+    c.drawString(50, y+25, "AFZENDLOCATIE")
+    c.drawString(220, y+25, "VERVOERDER")
+    c.drawString(380, y+25, "ROUTE")
 
-    elements.append(table1)
-    elements.append(Spacer(1, 10))
+    c.drawString(50, y+10, "Bergen Op Zoom")
+    c.drawString(220, y+10, "Speedlink B.V")
+    c.drawString(380, y+10, str(dn))
 
+    # ==========================
     # BOX 2
-    table2 = Table([
-        ["KLANTCODE", "SOORT BESTELLING", "LEVERDATUM"],
-        [row["CustomerID"], "Delivery", ""]
-    ], colWidths=[180, 180, 180])
+    # ==========================
+    y2 = y - 50
+    c.rect(40, y2, W-80, 40)
 
-    table2.setStyle([
-        ("GRID", (0,0), (-1,-1), 1, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey)
-    ])
+    c.drawString(50, y2+25, "KLANTCODE")
+    c.drawString(220, y2+25, "SOORT BESTELLING")
+    c.drawString(380, y2+25, "LEVERDATUM")
 
-    elements.append(table2)
-    elements.append(Spacer(1, 15))
+    c.drawString(50, y2+10, str(row["CLIENT"]))
+    c.drawString(220, y2+10, "Delivery")
 
-    # CUSTOMER BLOCK
-    customer = f"{row.get('Descr.', '')}<br/>{row.get('Adress 2','')} {row.get('Cp','')}"
+    # ==========================
+    # CUSTOMER BOX
+    # ==========================
+    y3 = y2 - 90
+    box_w = (W-80)/2
 
-    cust_table = Table([
-        ["ONTVANGER VAN GOEDEREN", "ONTVANGER VAN DE AFLEVERINGSBON"],
-        [customer, customer]
-    ], colWidths=[270, 270])
+    c.rect(40, y3, box_w, 80)
+    c.rect(40+box_w, y3, box_w, 80)
 
-    cust_table.setStyle([
-        ("GRID", (0,0), (-1,-1), 1, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey)
-    ])
+    c.setFont("Helvetica", 8)
 
-    elements.append(cust_table)
-    elements.append(Spacer(1, 20))
+    c.drawString(45, y3+60, "ONTVANGER VAN GOEDEREN")
+    c.drawString(45, y3+45, row["NAME"])
+    c.drawString(45, y3+30, row["STRASSE"])
+    c.drawString(45, y3+15, f"{row['PC']} {row['CITY']}")
 
-    # ITEMS
-    table_data = [["ARTIKEL", "AANTAL", "OMSCHRIJVING"]]
+    c.drawString(45+box_w, y3+60, "ONTVANGER VAN DE AFLEVERINGSBON")
+
+    # ==========================
+    # TABLE HEADER
+    # ==========================
+    y4 = y3 - 30
+
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(40, y4, "ARTIKEL")
+    c.drawString(120, y4, "OMSCHRIJVING")
+    c.drawString(350, y4, "AANTAL")
+    c.drawString(420, y4, "PRIJS")
+
+    # ==========================
+    # TABLE ROWS
+    # ==========================
+    y_row = y4 - 15
+    c.setFont("Helvetica", 8)
+
+    page = 1
+    total_pages = 1
 
     for _, r in data.iterrows():
-        table_data.append([
-            r.get("SKU", ""),
-            r.get("QTY", ""),
-            r.get("DESCRIPTION", "")
-        ])
 
-    items = Table(table_data, colWidths=[120, 80, 340])
-    items.setStyle([
-        ("GRID", (0,0), (-1,-1), 1, colors.black),
-        ("BACKGROUND", (0,0), (-1,0), colors.lightgrey)
-    ])
+        c.drawString(40, y_row, str(r["SKU"]))
+        c.drawString(120, y_row, "")  # descrizione optional
+        c.drawString(350, y_row, str(r["quantity_(bundles)"]))
+        c.drawString(420, y_row, str(r["price per bundle"]))
 
-    elements.append(items)
+        y_row -= 12
 
-    doc.build(elements)
+        # NUOVA PAGINA
+        if y_row < 60:
+            c.setFont("Helvetica", 8)
+            c.drawString(W-140, 40, f"Blad: {page}")
+            c.showPage()
+            page += 1
+
+            y_row = H - 60
+
+    # footer ultima pagina
+    c.drawString(W-140, 40, f"Blad: {page}")
+
+    c.save()
     buffer.seek(0)
+
     return buffer
 
 
 # ==========================
-# MAIN LOGIC
+# MAIN
 # ==========================
-if generate and orders_file and tp500_file and mapping_file and sku_file:
+if generate and file:
 
-    st.info("Processing...")
+    df = pd.read_excel(file)
+    df.columns = df.columns.str.strip()
 
-    # LOAD
-    df_orders = pd.read_excel(orders_file)
-    df_map = pd.read_excel(mapping_file)
-    df_tp500 = pd.read_excel(tp500_file)
-    df_sku = pd.read_excel(sku_file)
-
-    # CLEAN COLS
-    for df in [df_orders, df_map, df_tp500, df_sku]:
-        df.columns = df.columns.str.strip()
-
-    # ==========================
-    # ORDERS FIX
-    # ==========================
-    if "quantity_(bundles)" in df_orders.columns:
-        df_orders = df_orders.rename(columns={"quantity_(bundles)": "QTY"})
-
-    if "DN" not in df_orders.columns:
-        st.error("❌ DN NON trovata in orders")
-        st.stop()
-
-    df_orders["DN"] = df_orders["DN"].astype(str)
-
-    # ==========================
-    # MAPPING FIX
-    # ==========================
-    dn_col = find_column(df_map, ["dn"])
-    cust_col = find_column(df_map, ["customer"])
-
-    if dn_col is None or cust_col is None:
-        st.error(f"❌ Mapping sbagliato: {list(df_map.columns)}")
-        st.stop()
-
-    df_map = df_map.rename(columns={dn_col: "DN", cust_col: "CustomerID"})
-    df_map = df_map[["DN", "CustomerID"]]
-    df_map["DN"] = df_map["DN"].astype(str)
-
-    # ==========================
-    # MERGE 1 (SAFE)
-    # ==========================
-    df = pd.merge(df_orders, df_map, on="DN", how="left")
-
-    if "DN" not in df.columns:
-        st.error("❌ DN perso dopo merge mapping")
-        st.stop()
-
-    # ==========================
-    # TP500 FIX
-    # ==========================
-    cust_tp = find_column(df_tp500, ["customer"])
-    if cust_tp is None:
-        st.error("❌ TP500 sbagliato")
-        st.stop()
-
-    df_tp500 = df_tp500.rename(columns={cust_tp: "CustomerID"})
-
-    # FIX FORMATO
-    df["CustomerID"] = df["CustomerID"].astype(str).str.strip().str.zfill(10)
-    df_tp500["CustomerID"] = df_tp500["CustomerID"].astype(str).str.strip().str.zfill(10)
-
-    # ==========================
-    # MERGE 2 (SAFE)
-    # ==========================
-    df = pd.merge(df, df_tp500, on="CustomerID", how="left")
-
-    if "DN" not in df.columns:
-        st.error("❌ DN perso dopo merge TP500")
-        st.stop()
-
-    # ==========================
-    # SKU
-    # ==========================
-    if "SKU" in df_sku.columns:
-        df = pd.merge(df, df_sku, on="SKU", how="left")
-
-    df = df.fillna("")
-
-    # ==========================
-    # GROUP
-    # ==========================
-    if "DN" not in df.columns:
-        st.error(f"❌ DN finale mancante: {list(df.columns)}")
-        st.stop()
+    # FIX colonne bundles
+    if "quantity_(bundles)" not in df.columns:
+        for col in df.columns:
+            if "bundles" in col.lower():
+                df = df.rename(columns={col: "quantity_(bundles)"})
 
     grouped = df.groupby("DN")
 
-    # ==========================
-    # GENERATE
-    # ==========================
     for dn, group in grouped:
 
-        st.write(f"Processing {dn}")
+        st.write(f"Processing DN {dn}")
 
         pdf = create_pdf(dn, group)
 
@@ -222,4 +172,4 @@ if generate and orders_file and tp500_file and mapping_file and sku_file:
             file_name=f"{dn}.pdf"
         )
 
-    st.success("✅ DONE!")
+    st.success("✅ DONE")
