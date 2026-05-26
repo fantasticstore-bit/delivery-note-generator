@@ -1,4 +1,9 @@
-import streamlit as stimport streamlit as.lib.pagesizes import A4
+import streamlit as st
+import pandas as pd
+from io import BytesIO
+
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
 from PyPDF2 import PdfReader, PdfWriter
 
 
@@ -24,7 +29,7 @@ def create_overlay(dn, data):
 
     c.setFont("Helvetica", 9)
 
-    # DN (centro alto)
+    # DN
     c.drawString(300, 760, str(dn))
 
     # CLIENT CODE
@@ -35,22 +40,17 @@ def create_overlay(dn, data):
     c.drawString(60, 595, str(row["STRASSE"]))
     c.drawString(60, 580, f"{row['PC']} {row['CITY']}")
 
-    # ==========================
     # TABLE
-    # ==========================
     y = 430
-
     c.setFont("Helvetica", 8)
 
     for _, r in data.iterrows():
-
         c.drawString(60, y, str(r["SKU"]))
         c.drawString(340, y, str(r["quantity_(bundles)"]))
         c.drawString(420, y, str(r["price per bundle"]))
 
         y -= 12
 
-        # nuova pagina overlay
         if y < 50:
             c.showPage()
             y = 780
@@ -64,15 +64,14 @@ def create_overlay(dn, data):
 # ==========================
 # MERGE TEMPLATE + OVERLAY
 # ==========================
-def merge_pdf(template_file_bytes, overlay_bytes):
+def merge_pdf(template_bytes, overlay_bytes):
 
-    template_reader = PdfReader(template_file_bytes)
+    template_reader = PdfReader(template_bytes)
     overlay_reader = PdfReader(overlay_bytes)
 
     writer = PdfWriter()
 
     for i in range(len(template_reader.pages)):
-
         page = template_reader.pages[i]
 
         if i < len(overlay_reader.pages):
@@ -90,18 +89,17 @@ def merge_pdf(template_file_bytes, overlay_bytes):
 # ==========================
 # MAIN
 # ==========================
-if generate and excel_file and template_file:
+if generate and excel_file is not None and template_file is not None:
 
     df = pd.read_excel(excel_file)
     df.columns = df.columns.str.strip()
 
-    # FIX bundles column
+    # FIX bundles
     if "quantity_(bundles)" not in df.columns:
         for col in df.columns:
             if "bundles" in col.lower():
                 df = df.rename(columns={col: "quantity_(bundles)"})
 
-    # sicurezza
     if "DN" not in df.columns:
         st.error(f"❌ DN non trovato: {list(df.columns)}")
         st.stop()
@@ -112,11 +110,8 @@ if generate and excel_file and template_file:
 
         st.write(f"Processing DN {dn}")
 
-        # overlay
-        overlay_pdf = create_overlay(dn, group)
-
-        # merge con template
-        final_pdf = merge_pdf(template_file, overlay_pdf)
+        overlay = create_overlay(dn, group)
+        final_pdf = merge_pdf(template_file, overlay)
 
         st.download_button(
             label=f"📄 Download {dn}",
@@ -125,8 +120,3 @@ if generate and excel_file and template_file:
         )
 
     st.success("✅ DONE")
-
-import pandas as pd
-from io import BytesIO
-
-from reportlab.pdfgen import canvas
