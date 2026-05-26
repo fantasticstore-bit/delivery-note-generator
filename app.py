@@ -1,5 +1,12 @@
 import streamlit as st
-import pandas2 import PdfReader, PdfWriterimport pandas as pd
+import pandas as pd
+from io import BytesIO
+
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+
+from PyPDF2 import PdfReader, PdfWriter
+
 
 
 st.title("📦 Delivery Note Generator (TEMPLATE MODE)")
