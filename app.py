@@ -164,4 +164,3 @@ if generate and orders_file and tp500_file and mapping_file and sku_file:
         progress.progress((i + 1) / total)
 
     st.success("✅ DONE!")
-``
